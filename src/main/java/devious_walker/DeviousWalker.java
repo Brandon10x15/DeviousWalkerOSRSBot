@@ -1,7 +1,7 @@
 package devious_walker;
 
-import devious_walker.pathfinder.model.Teleport;
-import devious_walker.pathfinder.model.Transport;
+import devious_walker.pathfinder.Walker;
+import devious_walker.pathfinder.model.BankLocation;
 import devious_walker.region.RegionManager;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -11,21 +11,18 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.WidgetInfo;
-import devious_walker.pathfinder.Walker;
-import devious_walker.pathfinder.model.BankLocation;
 import net.runelite.rsb.wrappers.RSPlayer;
 import net.runelite.rsb.wrappers.RSTile;
 import net.runelite.rsb.wrappers.RSWidget;
 import net.runelite.rsb.wrappers.common.Positionable;
 
 import javax.inject.Inject;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 
 import static net.runelite.rsb.methods.MethodProvider.methods;
 import static net.runelite.rsb.methods.Methods.sleep;
-
-
-import net.runelite.cache.region.Region;
 
 @Slf4j
 public class DeviousWalker
@@ -111,8 +108,9 @@ public class DeviousWalker
 				y
 		);
 		 */
-		walkTile.getClickBox().doAction("Walk here");
-	}
+        walkTile.getClickBox().doAction("Walk here");
+        log.debug("Walking to: " + walkTile.toString());
+    }
 
 	public static boolean walkTo(WorldArea worldArea)
 	{

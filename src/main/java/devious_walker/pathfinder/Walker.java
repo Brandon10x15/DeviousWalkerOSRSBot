@@ -1,20 +1,21 @@
 package devious_walker.pathfinder;
 
 import devious_walker.ConfigManager;
-import devious_walker.region.RegionManager;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.*;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.coords.WorldArea;
-import net.runelite.api.coords.WorldPoint;
 import devious_walker.DeviousWalker;
 import devious_walker.Reachable;
 import devious_walker.pathfinder.model.Teleport;
 import devious_walker.pathfinder.model.Transport;
-import net.runelite.cache.region.Region;
+import devious_walker.region.RegionManager;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.CollisionData;
+import net.runelite.api.NpcID;
+import net.runelite.api.Point;
+import net.runelite.api.Tile;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldArea;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.rsb.util.StdRandom;
 import net.runelite.rsb.wrappers.*;
-
 
 import javax.inject.Singleton;
 import java.util.*;
@@ -49,6 +50,7 @@ public class Walker
 
     public static boolean walkTo(WorldArea destination)
     {
+        log.debug("Walking to " + destination.getX() + ", " + destination.getY());
         RSPlayer local = methods.players.getMyPlayer();
         WorldPoint playerPoint = WorldPoint.fromLocalInstance(methods.client, local.getLocation().getLocalLocation());
 
