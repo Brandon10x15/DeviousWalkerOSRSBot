@@ -1,11 +1,8 @@
 package devious_walker;
 
 import net.runelite.api.CollisionData;
-import net.runelite.api.GameObject;
-import net.runelite.api.Player;
 import net.runelite.api.Tile;
 import net.runelite.api.WallObject;
-import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.Direction;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -260,9 +257,9 @@ public class Reachable
 				return visitedTiles;
 			}
 
-			List<WorldPoint> neighbours = getNeighbours(destination, new RSTile(current))
-					.stream().filter(x -> !visitedTiles.contains(x) && !queue.contains(x))
-					.collect(Collectors.toList());
+			List<WorldPoint> neighbours = getNeighbours(destination, new RSTile(methods, current))
+                    .stream().filter(x -> !visitedTiles.contains(x) && !queue.contains(x))
+                    .collect(Collectors.toList());
 			queue.addAll(neighbours);
 		}
 
@@ -274,7 +271,7 @@ public class Reachable
 	 */
 	public static List<WorldPoint> getVisitedTiles(WorldPoint worldPoint)
 	{
-		return getVisitedTiles(new RSTile(worldPoint));
+        return getVisitedTiles(new RSTile(methods, worldPoint));
 	}
 /*
 	public static boolean isInteractable(Positionable locatable)

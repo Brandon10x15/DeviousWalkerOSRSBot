@@ -2,25 +2,20 @@ package devious_walker.pathfinder;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import devious_walker.DeviousWalker;
 import devious_walker.GameThread;
 import devious_walker.enums.WalkerVarbits;
 import devious_walker.enums.WalkerWidgetInfo;
-import devious_walker.quests.QuestVarbits;
-import devious_walker.quests.Quests;
-import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ItemID;
-import net.runelite.api.NpcID;
-import net.runelite.api.ObjectID;
-import net.runelite.api.Quest;
-import net.runelite.api.QuestState;
-import net.runelite.api.Skill;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.widgets.WidgetInfo;
-import devious_walker.DeviousWalker;
 import devious_walker.pathfinder.model.FairyRingLocation;
 import devious_walker.pathfinder.model.Transport;
 import devious_walker.pathfinder.model.dto.TransportDto;
 import devious_walker.pathfinder.model.requirement.Requirements;
+import devious_walker.quests.QuestVarbits;
+import devious_walker.quests.Quests;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.*;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.rsb.wrappers.*;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -395,7 +390,7 @@ public class TransportLoader
         return new Transport(source, destination, 0, 0, () ->
         {
             log.debug("lockingDoorTransport: " + source + " -> " + destination);
-            RSObject openDoor = methods.objects.query().id(openDoorId).distance(new RSTile(source), 1).first();
+            RSObject openDoor = methods.objects.query().id(openDoorId).distance(new RSTile(methods, source), 1).first();
             if (openDoor != null)
             {
                 openDoor.doAction("Open");
@@ -413,14 +408,14 @@ public class TransportLoader
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("trapDoorTransport: " + source + " -> " + destination);
-            RSObject openedTrapdoor = methods.objects.query().id(openedId).distance(new RSTile(source), 5).first();
+            RSObject openedTrapdoor = methods.objects.query().id(openedId).distance(new RSTile(methods, source), 5).first();
             if (openedTrapdoor != null)
             {
                 openedTrapdoor.doAction("");
                 return;
             }
 
-            RSObject closedTrapDoor = methods.objects.query().id(closedId).distance(new RSTile(source), 5).first();
+            RSObject closedTrapDoor = methods.objects.query().id(closedId).distance(new RSTile(methods, source), 5).first();
             if (closedTrapDoor != null)
             {
                 closedTrapDoor.doAction("");
@@ -436,7 +431,7 @@ public class TransportLoader
         return new Transport(source.getLocation(), destination.getLocation(), Integer.MAX_VALUE, 0, () ->
         {
             log.debug("Looking for fairy ring at {} to {}", source.getLocation(), destination.getLocation());
-            RSObject ring = methods.objects.query().named("Fairy ring").distance(new RSTile(source.getLocation()), 5).first();
+            RSObject ring = methods.objects.query().named("Fairy ring").distance(new RSTile(methods, source.getLocation()), 5).first();
 
             if (ring == null)
             {
@@ -487,7 +482,7 @@ public class TransportLoader
                 return;
             }
 
-            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(source), 5).first();
+            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).first();
             if (transport != null)
             {
                 methods.inventory.useItem(itemId, transport);
@@ -576,14 +571,14 @@ public class TransportLoader
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("objectTransport: " + source + " -> " + destination);
-            RSObject first = methods.objects.query().id(objId).located(new RSTile(source)).first();
+            RSObject first = methods.objects.query().id(objId).located(new RSTile(methods, source)).first();
             if (first != null)
             {
                 first.doAction(actions);
                 return;
             }
 
-            methods.objects.query().id(objId).distance(new RSTile(source), 5).results().stream()
+            methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).results().stream()
                     .min(Comparator.comparingInt(o -> o.getLocation().getWorldLocation().distanceTo(source)))
                     .ifPresent(obj -> obj.doAction(actions));
         });
@@ -600,7 +595,7 @@ public class TransportLoader
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("objectTransport: " + source + " -> " + destination);
-            RSObject first = methods.objects.query().id(objId).located(new RSTile(source)).first();
+            RSObject first = methods.objects.query().id(objId).located(new RSTile(methods, source)).first();
             if (first != null)
             {
                 log.debug("Transport found {}", first.getLocation().getWorldLocation());
@@ -609,7 +604,7 @@ public class TransportLoader
             }
 
             log.debug("Transport not found {}, {}", source, objId);
-            methods.objects.query().id(objId).distance(new RSTile(source), 5).results().stream()
+            methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).results().stream()
                     .min(Comparator.comparingInt(o -> o.getLocation().getWorldLocation().distanceTo(source)))
                     .ifPresent(obj -> obj.doAction(actions));
         }, requirements);
@@ -662,7 +657,7 @@ public class TransportLoader
                 return;
             }
 
-            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(source), 5).first();
+            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).first();
             if (transport != null)
             {
                 transport.doAction(actions);
@@ -678,7 +673,7 @@ public class TransportLoader
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("slashWebTransport: " + source + " -> " + destination);
-            RSObject transport = methods.objects.query().namedContains("Web").distance(new RSTile(source), 5).first();
+            RSObject transport = methods.objects.query().namedContains("Web").distance(new RSTile(methods, source), 5).first();
             // TODO: check has action
             //RSObject transport = TileObjects.getFirstSurrounding(source, 5, it -> it.getName() != null && it.getName().contains("Web") && it.hasAction("Slash"));
             if (transport != null)
@@ -714,7 +709,7 @@ public class TransportLoader
                         return;
                     }
 
-                    RSObject tree = methods.objects.query().id(1293, 1294, 1295).distance(new RSTile(source), 5).first();
+                    RSObject tree = methods.objects.query().id(1293, 1294, 1295).distance(new RSTile(methods, source), 5).first();
                     if (tree != null)
                     {
                         // TODO: check this works
@@ -746,7 +741,7 @@ public class TransportLoader
                         return;
                     }
 
-                    RSObject tree = methods.objects.query().named("Magic Mushtree").distance(new RSTile(source), 5).first();
+                    RSObject tree = methods.objects.query().named("Magic Mushtree").distance(new RSTile(methods, source), 5).first();
                     if (tree != null)
                     {
                         tree.doAction("Use");

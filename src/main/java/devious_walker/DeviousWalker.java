@@ -91,7 +91,7 @@ public class DeviousWalker
 			walkPoint = nearestInScene.getWorldLocation();
 			destinationTile = nearestInScene;
 		}
-		RSTile walkTile = new RSTile(destinationTile);
+		RSTile walkTile = new RSTile(methods, destinationTile);
 		/*
 		int sceneX = walkPoint.getX() - client.getBaseX();
 		int sceneY = walkPoint.getY() - client.getBaseY();

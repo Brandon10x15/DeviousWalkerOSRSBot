@@ -276,7 +276,7 @@ public class Walker
             }
 
             // MLM Rocks
-            RSObject rockfall = methods.objects.query().named("Rockfall").located(new RSTile(a)).first();
+            RSObject rockfall = methods.objects.query().named("Rockfall").located(new RSTile(methods, a)).first();
             boolean hasPickaxe = !methods.inventory.query().namedContains("pickaxe").isEmpty() || !methods.equipment.query().namedContains("pickaxe").isEmpty();
             if (rockfall != null && hasPickaxe)
             {
@@ -297,7 +297,7 @@ public class Walker
             // Diagonal door bullshit
             if (Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() + b.getY()) > 1 && a.getPlane() == b.getPlane())
             {
-                RSObject wall = methods.objects.query().named("Door").located(new RSTile(a)).filter(x -> x.getType() != RSObject.Type.WALL).first();
+                RSObject wall = methods.objects.query().named("Door").located(new RSTile(methods, a)).filter(x -> x.getType() != RSObject.Type.WALL).first();
 
                 if (wall != null && Reachable.isClosedDoor(wall.getID()))
                 {
