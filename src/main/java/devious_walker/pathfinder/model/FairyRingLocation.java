@@ -2,16 +2,11 @@ package devious_walker.pathfinder.model;
 
 import devious_walker.GameThread;
 import lombok.Getter;
-import net.runelite.api.MenuAction;
 import net.runelite.api.Varbits;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.rsb.methods.MethodContext;
 import net.runelite.rsb.wrappers.RSWidget;
-
-import java.util.function.Supplier;
-
-import static net.runelite.rsb.methods.MethodProvider.methods;
 
 @Getter
 public enum FairyRingLocation
@@ -67,56 +62,47 @@ public enum FairyRingLocation
     }
 
     private static final int[][] TURN_INDICES = {{19, 20}, {21, 22}, {23, 24}};
-    public static final Supplier<Widget> CONFIRM_WIDGET = () -> methods.client.getWidget(WidgetInfo.FAIRY_RING.getGroupId(), 26);
     private static final String[][] CODES = {{"A", "D", "C", "B"}, {"I", "L", "K", "J"}, {"P", "S", "R", "Q"}};
 
-    public boolean validateCode()
-    {
-        return getCurrentCode().equalsIgnoreCase(this.code);
+    public boolean validateCode(MethodContext ctx) {
+        return getCurrentCode(ctx).equalsIgnoreCase(this.code);
     }
 
-    public void setCode()
-    {
+    public void setCode(MethodContext ctx) {
         // TODO: make sure you dont have to just click these
-        String currentCode = getCurrentCode();
-        if (currentCode.charAt(0) != this.code.charAt(0))
-        {
-            methods.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[0][0]).doAction("");
+        String currentCode = getCurrentCode(ctx);
+        if (currentCode.charAt(0) != this.code.charAt(0)) {
+            ctx.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[0][0]).doAction("");
             return;
         }
 
         if (currentCode.charAt(1) != this.code.charAt(1))
         {
-            methods.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[1][0]).doAction("");
+            ctx.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[1][0]).doAction("");
             return;
         }
 
         if (currentCode.charAt(2) != this.code.charAt(2))
         {
-            methods.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[2][0]).doAction("");
+            ctx.interfaces.getComponent(WidgetInfo.FAIRY_RING.getGroupId(), TURN_INDICES[2][0]).doAction("");
         }
     }
 
-    public void travel()
-    {
-        if (validateCode())
-        {
+    public void travel(MethodContext ctx) {
+        if (validateCode(ctx)) {
             // TODO:
             //CONFIRM_WIDGET.get().interact(1, MenuAction.CC_OP.getId(), -1, 26083354);
-            new RSWidget(methods, CONFIRM_WIDGET.get()).doAction("");
-        }
-        else
-        {
-            setCode();
+            new RSWidget(ctx, ctx.client.getWidget(WidgetInfo.FAIRY_RING.getGroupId(), 26)).doAction("");
+        } else {
+            setCode(ctx);
         }
     }
 
-    public static String getCurrentCode()
-    {
+    public static String getCurrentCode(MethodContext ctx) {
         return GameThread.invokeLater(() ->
-                CODES[0][methods.client.getVarbitValue(Varbits.FAIRY_RING_DIAL_ADCB)]
-                + CODES[1][methods.client.getVarbitValue(Varbits.FAIRY_RIGH_DIAL_ILJK)]
-                + CODES[2][methods.client.getVarbitValue(Varbits.FAIRY_RING_DIAL_PSRQ)]
+                CODES[0][ctx.client.getVarbitValue(Varbits.FAIRY_RING_DIAL_ADCB)]
+                        + CODES[1][ctx.client.getVarbitValue(Varbits.FAIRY_RIGH_DIAL_ILJK)]
+                        + CODES[2][ctx.client.getVarbitValue(Varbits.FAIRY_RING_DIAL_PSRQ)]
         );
     }
 

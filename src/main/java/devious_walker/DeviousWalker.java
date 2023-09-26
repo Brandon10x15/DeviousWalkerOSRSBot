@@ -11,6 +11,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.rsb.methods.MethodContext;
 import net.runelite.rsb.wrappers.RSPlayer;
 import net.runelite.rsb.wrappers.RSTile;
 import net.runelite.rsb.wrappers.RSWidget;
@@ -20,67 +21,65 @@ import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
-import static net.runelite.rsb.methods.MethodProvider.methods;
 import static net.runelite.rsb.methods.Methods.sleep;
 
 @Slf4j
-public class DeviousWalker
-{
-	@Inject
-	RegionManager regionManager;
+public class DeviousWalker {
+    @Inject
+    RegionManager regionManager;
 
-	private static final int STAMINA_VARBIT = 25;
-	private static final int RUN_VARP = 173;
+    private static final int STAMINA_VARBIT = 25;
+    private static final int RUN_VARP = 173;
 
-	public static WorldPoint getDestination()
-	{
-		Client client = methods.client;
-		LocalPoint destination = client.getLocalDestinationLocation();
-		if (destination == null || (destination.getX() == 0 && destination.getY() == 0))
-		{
-			return null;
-		}
+    public DeviousWalker() {
 
-		return new WorldPoint(
-				destination.getX() + client.getBaseX(),
+    }
+
+    public static WorldPoint getDestination(MethodContext ctx) {
+        Client client = ctx.client;
+        LocalPoint destination = client.getLocalDestinationLocation();
+        if (destination == null || (destination.getX() == 0 && destination.getY() == 0)) {
+            return null;
+        }
+
+        return new WorldPoint(
+                destination.getX() + client.getBaseX(),
 				destination.getY() + client.getBaseY(),
 				client.getPlane()
 		);
 	}
 
-	public static boolean isWalking()
-	{
-		RSPlayer local = methods.players.getMyPlayer();
-		WorldPoint destination = getDestination();
-		return local.isMoving()
-				&& destination != null
-				&& destination.distanceTo(local.getPosition().getWorldLocation()) > 4;
-	}
+    public static boolean isWalking(MethodContext ctx) {
+        RSPlayer local = ctx.players.getMyPlayer();
+        WorldPoint destination = getDestination(ctx);
+        return local.isMoving()
+                && destination != null
+                && destination.distanceTo(local.getPosition().getWorldLocation()) > 4;
+    }
 
-	public static void walk(WorldPoint worldPoint)
-	{
-		Client client = methods.client;
-		Player local = client.getLocalPlayer();
-		if (local == null)
-		{
-			return;
-		}
+    public static void walk(MethodContext ctx, WorldPoint worldPoint) {
+        Client client = ctx.client;
+        Player local = client.getLocalPlayer();
+        if (local == null) {
+            return;
+        }
 
-		WorldPoint walkPoint = worldPoint;
-		Tile destinationTile = methods.tiles.getTile(methods, worldPoint);
+        WorldPoint walkPoint = worldPoint;
+        Tile destinationTile = ctx.tiles.getTile(ctx, worldPoint);
 		// Check if tile is in loaded client scene
 		if (destinationTile == null)
 		{
 			log.debug("Destination {} is not in scene", worldPoint);
-			Tile nearestInScene = Arrays.stream(methods.client.getScene().getTiles()[methods.client.getPlane()])
-					.flatMap(Arrays::stream)
-					.filter(tile -> tile != null)
-					.min(Comparator.comparingInt(x -> x.getWorldLocation().distanceTo(worldPoint)))
-					.orElse(null);
+            Tile nearestInScene = Arrays.stream(ctx.client.getScene().getTiles()[ctx.client.getPlane()])
+                    .flatMap(Arrays::stream)
+                    .filter(Objects::nonNull)
+                    .min(Comparator.comparingInt(x -> x.getWorldLocation().distanceTo(worldPoint)))
+                    .orElse(null);
 
-			// TODO: check which of these is better
-			//Tile nearestInScene = methods.calc.getTileOnScreen(new RSTile(worldPoint)).getTile(methods);
+            // TODO: check which of these is better
+            //Tile nearestInScene = ctx.calc.getTileOnScreen(new RSTile(worldPoint)).getTile(ctx);
 
 			if (nearestInScene == null)
 			{
@@ -91,7 +90,7 @@ public class DeviousWalker
 			walkPoint = nearestInScene.getWorldLocation();
 			destinationTile = nearestInScene;
 		}
-		RSTile walkTile = new RSTile(methods, destinationTile);
+        RSTile walkTile = new RSTile(ctx, destinationTile);
 		/*
 		int sceneX = walkPoint.getX() - client.getBaseX();
 		int sceneY = walkPoint.getY() - client.getBaseY();
@@ -112,95 +111,80 @@ public class DeviousWalker
         log.debug("Walking to: " + walkTile.toString());
     }
 
-	public static boolean walkTo(WorldArea worldArea)
-	{
-		return Walker.walkTo(worldArea);
-	}
+    public static boolean walkTo(MethodContext ctx, WorldArea worldArea) {
+        return Walker.walkTo(ctx, worldArea);
+    }
 
-	public static void walk(Positionable locatable)
-	{
-		walk(locatable.getLocation().getWorldLocation());
-	}
+    public static void walk(MethodContext ctx, Positionable locatable) {
+        walk(ctx, locatable.getLocation().getWorldLocation());
+    }
 
-	public static boolean walkTo(WorldPoint worldPoint)
-	{
-		return Walker.walkTo(worldPoint);
-	}
+    public static boolean walkTo(MethodContext ctx, WorldPoint worldPoint) {
+        return Walker.walkTo(ctx, worldPoint);
+    }
 
-	public static boolean walkTo(Positionable locatable)
-	{
-		return walkTo(locatable.getLocation().getWorldLocation());
-	}
+    public static boolean walkTo(MethodContext ctx, Positionable locatable) {
+        return walkTo(ctx, locatable.getLocation().getWorldLocation());
+    }
 
-	public static boolean walkTo(BankLocation bankLocation)
-	{
-		return walkTo(bankLocation.getArea());
-	}
+    public static boolean walkTo(MethodContext ctx, BankLocation bankLocation) {
+        return walkTo(ctx, bankLocation.getArea());
+    }
 
-	public static boolean walkTo(int x, int y)
-	{
-		return walkTo(x, y, methods.client.getPlane());
-	}
+    public static boolean walkTo(MethodContext ctx, int x, int y) {
+        return walkTo(ctx, x, y, ctx.client.getPlane());
+    }
 
-	public static boolean walkTo(int x, int y, int plane)
-	{
-		return walkTo(new WorldPoint(x, y, plane));
-	}
+    public static boolean walkTo(MethodContext ctx, int x, int y, int plane) {
+        return walkTo(ctx, new WorldPoint(x, y, plane));
+    }
 
 
-	public static boolean walkToCompletion(WorldArea worldArea)
-	{
-		if (!Walker.canWalk(worldArea)) {
-			log.warn("Failed to generate path attempting to walk to {}", worldArea);
-			return false;
-		}
-		long standingTimerStart = -
-				1;
-		RSPlayer local = methods.players.getMyPlayer();
-		while (worldArea.distanceTo(WorldPoint.fromLocalInstance(methods.client, local.getLocation().getLocalLocation())) > 3 &&
-				worldArea.getPlane() == methods.players.getMyPlayer().getLocation().getPlane()) {
-			sleep(4000, () -> getDestination() == null || getDestination().distanceTo(methods.players.getMyPlayer().getPosition().getWorldLocation()) < 15);
-			Walker.walkTo(worldArea);
-			if (!methods.players.getMyPlayer().isMoving()) {
-				if (standingTimerStart == -1) {
-					standingTimerStart = System.currentTimeMillis();
-				}
-				else if (System.currentTimeMillis() - standingTimerStart > 10000) {
-					log.warn("Player is stuck attempting to walk to {}", worldArea);
-					return false;
-				}
-			}
-			else {
-				standingTimerStart = -1;
+    public static boolean walkToCompletion(MethodContext ctx, WorldArea worldArea) {
+        if (!Walker.canWalk(ctx, worldArea)) {
+            log.warn("Failed to generate path attempting to walk to {}", worldArea);
+            return false;
+        }
+        long standingTimerStart = -
+                1;
+        RSPlayer local = ctx.players.getMyPlayer();
+        while (worldArea.distanceTo(WorldPoint.fromLocalInstance(ctx.client, local.getLocation().getLocalLocation())) > 3 &&
+                worldArea.getPlane() == ctx.players.getMyPlayer().getLocation().getPlane()) {
+            sleep(4000, () -> getDestination(ctx) == null || getDestination(ctx).distanceTo(ctx.players.getMyPlayer().getPosition().getWorldLocation()) < 15);
+            Walker.walkTo(ctx, worldArea);
+            if (!ctx.players.getMyPlayer().isMoving()) {
+                if (standingTimerStart == -1) {
+                    standingTimerStart = System.currentTimeMillis();
+                } else if (System.currentTimeMillis() - standingTimerStart > 10000) {
+                    log.warn("Player is stuck attempting to walk to {}", worldArea);
+                    return false;
+                }
+            } else {
+                standingTimerStart = -1;
 			}
 		}
 		return true;
 	}
 
-	public static boolean walkToCompletion(WorldPoint worldPoint)
-	{
-		return walkToCompletion(worldPoint.toWorldArea());
-	}
+    public static boolean walkToCompletion(MethodContext ctx, WorldPoint worldPoint) {
+        return walkToCompletion(ctx, worldPoint.toWorldArea());
+    }
 
-	public static boolean walkToCompletion(Positionable locatable)
-	{
-		return walkToCompletion(locatable.getLocation().getWorldLocation());
-	}
+    public static boolean walkToCompletion(MethodContext ctx, Positionable locatable) {
+        return walkToCompletion(ctx, locatable.getLocation().getWorldLocation());
+    }
 
-	public static boolean walkToCompletion(BankLocation bankLocation)
-	{
-		return walkToCompletion(bankLocation.getArea());
-	}
+    public static boolean walkToCompletion(MethodContext ctx, BankLocation bankLocation) {
+        return walkToCompletion(ctx, bankLocation.getArea());
+    }
 
-	public static boolean walkToCompletion(int x, int y)
-	{
-		return walkToCompletion(x, y, methods.client.getPlane());
-	}
+    public static boolean walkToCompletion(MethodContext ctx, int x, int y) {
+        return walkToCompletion(ctx, x, y, ctx.client.getPlane());
+    }
 
-	public static boolean walkToCompletion(int x, int y, int plane)
-	{
-		return walkToCompletion(new WorldPoint(x, y, plane));
-	}
+    public static boolean walkToCompletion(MethodContext ctx, int x, int y, int plane) {
+        return walkToCompletion(ctx, new WorldPoint(x, y, plane));
+    }
 
 
 	/**
@@ -231,60 +215,49 @@ public class DeviousWalker
 	}
  */
 
-	/**
-	 * Returns true if run is toggled on
-	 */
-	public static boolean isRunEnabled()
-	{
-		return methods.client.getVarpValue(RUN_VARP) == 1;
-	}
+    /**
+     * Returns true if run is toggled on
+     */
+    public static boolean isRunEnabled(MethodContext ctx) {
+        return ctx.client.getVarpValue(RUN_VARP) == 1;
+    }
 
-	public static void toggleRun()
-	{
-		RSWidget widget = methods.interfaces.getComponent(WidgetInfo.MINIMAP_TOGGLE_RUN_ORB);
-		if (widget != null)
-		{
-			widget.doAction("Toggle Run");
-		}
-	}
+    public static void toggleRun(MethodContext ctx) {
+        RSWidget widget = ctx.interfaces.getComponent(WidgetInfo.MINIMAP_TOGGLE_RUN_ORB);
+        if (widget != null) {
+            widget.doAction("Toggle Run");
+        }
+    }
 
-	public static boolean isStaminaBoosted()
-	{
-		return methods.client.getVarbitValue(STAMINA_VARBIT) == 1;
-	}
+    public static boolean isStaminaBoosted(MethodContext ctx) {
+        return ctx.client.getVarbitValue(STAMINA_VARBIT) == 1;
+    }
 
-	public static int getRunEnergy()
-	{
-		return methods.client.getEnergy() / 100;
-	}
+    public static int getRunEnergy(MethodContext ctx) {
+        return ctx.client.getEnergy() / 100;
+    }
 
-	public static int calculateDistance(WorldArea destination)
-	{
-		return Walker.calculatePath(destination).size();
-	}
+    public static int calculateDistance(MethodContext ctx, WorldArea destination) {
+        return Walker.calculatePath(ctx, destination).size();
+    }
 
-	public static int calculateDistance(WorldPoint start, WorldArea destination)
-	{
-		return calculateDistance(List.of(start), destination);
-	}
+    public static int calculateDistance(MethodContext ctx, WorldPoint start, WorldArea destination) {
+        return calculateDistance(ctx, List.of(start), destination);
+    }
 
-	public static int calculateDistance(List<WorldPoint> start, WorldArea destination)
-	{
-		return Walker.calculatePath(start, destination).size();
-	}
+    public static int calculateDistance(MethodContext ctx, List<WorldPoint> start, WorldArea destination) {
+        return Walker.calculatePath(ctx, start, destination).size();
+    }
 
-	public static int calculateDistance(WorldPoint destination)
-	{
-		return calculateDistance(destination.toWorldArea());
-	}
+    public static int calculateDistance(MethodContext ctx, WorldPoint destination) {
+        return calculateDistance(ctx, destination.toWorldArea());
+    }
 
-	public static int calculateDistance(WorldPoint start, WorldPoint destination)
-	{
-		return calculateDistance(start, destination.toWorldArea());
-	}
+    public static int calculateDistance(MethodContext ctx, WorldPoint start, WorldPoint destination) {
+        return calculateDistance(ctx, start, destination.toWorldArea());
+    }
 
-	public static int calculateDistance(List<WorldPoint> start, WorldPoint destination)
-	{
-		return calculateDistance(start, destination.toWorldArea());
+    public static int calculateDistance(MethodContext ctx, List<WorldPoint> start, WorldPoint destination) {
+        return calculateDistance(ctx, start, destination.toWorldArea());
 	}
 }

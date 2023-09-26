@@ -14,6 +14,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.rsb.methods.MethodContext;
 import net.runelite.rsb.util.StdRandom;
 import net.runelite.rsb.wrappers.*;
 
@@ -25,14 +26,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
-import static net.runelite.rsb.methods.MethodProvider.methods;
 import static net.runelite.rsb.methods.Methods.sleep;
 
 @Singleton
 @Slf4j
 public class Walker
 {
-    public static final int MAX_INTERACT_DISTANCE = 20;
+    public final int MAX_INTERACT_DISTANCE = 20;
     private static final int MIN_TILES_WALKED_IN_STEP = 7;
     private static final int MAX_TILES_WALKED_IN_STEP = 20;
     private static final int MAX_MIN_ENERGY = 50;
@@ -42,51 +42,51 @@ public class Walker
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static Future<List<WorldPoint>> pathFuture = null;
     private static WorldArea currentDestination = null;
+    private final MethodContext ctx;
 
-    public static boolean walkTo(WorldPoint destination)
-    {
-        return walkTo(destination.toWorldArea());
+    public Walker(MethodContext ctx) {
+        this.ctx = ctx;
     }
 
-    public static boolean walkTo(WorldArea destination)
-    {
-        log.debug("Walking to " + destination.getX() + ", " + destination.getY());
-        RSPlayer local = methods.players.getMyPlayer();
-        WorldPoint playerPoint = WorldPoint.fromLocalInstance(methods.client, local.getLocation().getLocalLocation());
+    public boolean walkTo(WorldPoint destination) {
+        return walkTo(ctx, destination.toWorldArea());
+    }
 
-        if (destination.contains(playerPoint))
-        {
+    public boolean walkTo(WorldArea destination) {
+        log.debug("Walking to " + destination.getX() + ", " + destination.getY());
+        RSPlayer local = ctx.players.getMyPlayer();
+        WorldPoint playerPoint = WorldPoint.fromLocalInstance(ctx.client, local.getLocation().getLocalLocation());
+
+        if (destination.contains(playerPoint)) {
             currentDestination = null;
             return true;
         }
 
-        if (methods.npcChat.isCutsceneActive() || methods.interfaces.getComponent(299, 0).isVisible())
-        {
+        if (ctx.npcChat.isCutsceneActive() || ctx.interfaces.getComponent(299, 0).isVisible()) {
             sleep(1200);
             return false;
         }
 
         Map<WorldPoint, List<Transport>> transports = buildTransportLinks();
-        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(destination);
-        List<WorldPoint> path = buildPath(destination);
+        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(ctx, destination);
+        List<WorldPoint> path = buildPath(ctx, destination);
 
         // TODO:
         //Static.getEntityRenderer().setCurrentPath(path);
 
-        if (path == null || path.isEmpty())
-        {
+        if (path == null || path.isEmpty()) {
             log.error(path == null ? "Path is null" : "Path is empty");
             return false;
         }
 
-        List<WorldPoint> instancedPath = path.stream().map(point -> WorldPoint.toLocalInstance(methods.client, point).stream().findFirst().orElse(point)).toList();
+        List<WorldPoint> instancedPath = path.stream().map(point -> WorldPoint.toLocalInstance(ctx.client, point).stream().findFirst().orElse(point)).toList();
 
         log.debug("InstancedPath: " + instancedPath);
 
         WorldPoint startPosition = path.get(0);
         Teleport teleport = teleports.get(startPosition);
         WorldPoint localWP = local.getLocation().getWorldLocation();
-        boolean offPath = instancedPath.stream().noneMatch(t -> t.distanceTo(localWP) <= 5 && canPathTo(localWP, t));
+        boolean offPath = instancedPath.stream().noneMatch(t -> t.distanceTo(localWP) <= 5 && canPathTo(ctx, localWP, t));
 
         // Teleport or refresh path if our direction changed
         if (offPath)
@@ -94,47 +94,41 @@ public class Walker
             if (teleport != null)
             {
                 log.debug("Casting teleport {}", teleport);
-                if (methods.players.getMyPlayer().isIdle() || methods.players.getMyPlayer().isInCombat())
-                {
+                if (ctx.players.getMyPlayer().isIdle() || ctx.players.getMyPlayer().isInCombat()) {
                     teleport.getHandler().run();
                     sleep(1000);
                 }
-                sleep(1000, () -> methods.players.getMyPlayer().getLocation().getWorldLocation().distanceTo(teleport.getDestination()) < 10);
+                sleep(1000, () -> ctx.players.getMyPlayer().getLocation().getWorldLocation().distanceTo(teleport.getDestination()) < 10);
                 return false;
             }
 
-            path = buildPath(destination, true);
-            instancedPath = path.stream().map(point -> WorldPoint.toLocalInstance(methods.client, point).stream().findFirst().orElseThrow()).toList();
+            path = buildPath(ctx, destination, true);
+            instancedPath = path.stream().map(point -> WorldPoint.toLocalInstance(ctx.client, point).stream().findFirst().orElseThrow()).toList();
             log.debug("Refreshed path {}", path.size() - 1);
         }
 
-        return walkAlong(instancedPath, transports);
+        return walkAlong(ctx, instancedPath, transports);
     }
 
-    public static boolean walkAlong(List<WorldPoint> path, Map<WorldPoint, List<Transport>> transports)
-    {
-        List<WorldPoint> remainingPath = remainingPath(path);
+    public boolean walkAlong(List<WorldPoint> path, Map<WorldPoint, List<Transport>> transports) {
+        List<WorldPoint> remainingPath = remainingPath(ctx, path);
 
-        if (handleTransports(remainingPath, transports))
-        {
+        if (handleTransports(ctx, remainingPath, transports)) {
             return false;
         }
 
-        return stepAlong(remainingPath);
+        return stepAlong(ctx, remainingPath);
     }
 
-    public static boolean stepAlong(List<WorldPoint> path)
-    {
-        List<WorldPoint> reachablePath = reachablePath(path);
+    public boolean stepAlong(List<WorldPoint> path) {
+        List<WorldPoint> reachablePath = reachablePath(ctx, path);
         log.debug("reachablePath: " + reachablePath);
-        if (reachablePath.isEmpty())
-        {
+        if (reachablePath.isEmpty()) {
             return false;
         }
         int nextTileIdx = reachablePath.size() - 1;
-        if (nextTileIdx <= MIN_TILES_WALKED_IN_STEP)
-        {
-            return step(reachablePath.get(nextTileIdx));
+        if (nextTileIdx <= MIN_TILES_WALKED_IN_STEP) {
+            return step(ctx, reachablePath.get(nextTileIdx));
         }
 
         if (nextTileIdx > MAX_TILES_WALKED_IN_STEP)
@@ -143,18 +137,15 @@ public class Walker
         }
 
         int targetDistance = StdRandom.uniform(MIN_TILES_WALKED_IN_STEP, nextTileIdx);
-        return step(reachablePath.get(targetDistance));
+        return step(ctx, reachablePath.get(targetDistance));
     }
 
-    public static List<WorldPoint> reachablePath(List<WorldPoint> remainingPath)
-    {
-        RSPlayer local = methods.players.getMyPlayer();
+    public List<WorldPoint> reachablePath(List<WorldPoint> remainingPath) {
+        RSPlayer local = ctx.players.getMyPlayer();
         List<WorldPoint> out = new ArrayList<>();
-        for (WorldPoint p : remainingPath)
-        {
-            Tile tile = methods.tiles.getTile(methods, p);
-            if (tile == null)
-            {
+        for (WorldPoint p : remainingPath) {
+            Tile tile = ctx.tiles.getTile(ctx, p);
+            if (tile == null) {
                 break;
             }
 
@@ -169,43 +160,43 @@ public class Walker
         return out;
     }
 
-    public static boolean step(WorldPoint destination)
-    {
-        RSPlayer local = methods.players.getMyPlayer();
+    public boolean step(WorldPoint destination) {
+        RSPlayer local = ctx.players.getMyPlayer();
         log.debug("Stepping towards " + destination);
-        DeviousWalker.walk(destination);
+        DeviousWalker.walk(ctx, destination);
 
-        if (local.getLocation().getWorldLocation().equals(destination))
-        {
+        if (local.getLocation().getWorldLocation().equals(destination)) {
             return false;
         }
 
-        if (!DeviousWalker.isRunEnabled() && (DeviousWalker.getRunEnergy() >= StdRandom.uniform(MIN_ENERGY, MAX_MIN_ENERGY) || (local.getAccessor().getHealthScale() > -1 && DeviousWalker.getRunEnergy() > 0)))
-        {
-            DeviousWalker.toggleRun();
-            sleep(2000, DeviousWalker::isRunEnabled);
+        if (!DeviousWalker.isRunEnabled(ctx) && (DeviousWalker.getRunEnergy(ctx) >= StdRandom.uniform(MIN_ENERGY, MAX_MIN_ENERGY) || (local.getAccessor().getHealthScale() > -1 && DeviousWalker.getRunEnergy(ctx) > 0))) {
+            DeviousWalker.toggleRun(ctx);
+            while (!DeviousWalker.isRunEnabled(ctx)) {
+                sleep(2000);
+            }
             return true;
         }
 
-        if (!DeviousWalker.isRunEnabled() && DeviousWalker.getRunEnergy() > 0 && DeviousWalker.isStaminaBoosted())
-        {
-            DeviousWalker.toggleRun();
-            sleep(2000, DeviousWalker::isRunEnabled);
+        if (!DeviousWalker.isRunEnabled(ctx) && DeviousWalker.getRunEnergy(ctx) > 0 && DeviousWalker.isStaminaBoosted(ctx)) {
+            DeviousWalker.toggleRun(ctx);
+            while (!DeviousWalker.isRunEnabled(ctx)) {
+                sleep(2000);
+            }
             return true;
         }
 
         // Handles when stuck on those trees next to draynor manor
         if (!local.isMoving())
         {
-            RSNPC tree = methods.npcs.getNearest(n -> n.getID() == NpcID.TREE_4416 && n.getInteracting() == local && n.getLocation().getWorldLocation().distanceTo2D(local.getLocation().getWorldLocation()) <= 1);
+            RSNPC tree = ctx.npcs.getNearest(n -> n.getID() == NpcID.TREE_4416 && n.getInteracting() == local && n.getLocation().getWorldLocation().distanceTo2D(local.getLocation().getWorldLocation()) <= 1);
             if (tree != null)
             {
                 WorldArea area = new WorldArea(tree.getLocation().getWorldLocation().dx(-1).dy(-1), 3, 3);
                 area.toWorldPointList().stream()
-                        .filter(wp -> !wp.equals(local.getLocation().getWorldLocation()) && !wp.equals(tree.getLocation().getWorldLocation()) && canPathTo(local.getLocation().getWorldLocation(), wp))
+                        .filter(wp -> !wp.equals(local.getLocation().getWorldLocation()) && !wp.equals(tree.getLocation().getWorldLocation()) && canPathTo(ctx, local.getLocation().getWorldLocation(), wp))
                         .unordered()
                         .min(Comparator.comparingInt(wp -> wp.distanceTo2D(tree.getLocation().getWorldLocation())))
-                        .ifPresent(DeviousWalker::walk);
+                        .ifPresent(wp -> DeviousWalker.walk(ctx, wp));
                 return false;
             }
         }
@@ -213,50 +204,45 @@ public class Walker
         return true;
     }
 
-    public static boolean handleTransports(List<WorldPoint> path, Map<WorldPoint, List<Transport>> transports)
-    {
+    public boolean handleTransports(List<WorldPoint> path, Map<WorldPoint, List<Transport>> transports) {
         // Edgeville/ardy wilderness lever warning
-        RSWidget leverWarningWidget = methods.interfaces.getComponent(299, 1);
-        if (leverWarningWidget.isVisible())
-        {
+        RSWidget leverWarningWidget = ctx.interfaces.getComponent(299, 1);
+        if (leverWarningWidget.isVisible()) {
             log.debug("Handling Wilderness lever warning widget");
-            methods.npcChat.clickContinue(true);
+            ctx.npcChat.clickContinue(true);
             return true;
         }
 
         // Wilderness ditch warning
-        RSWidget wildyDitchWidget = methods.interfaces.getComponent(475, 11);
+        RSWidget wildyDitchWidget = ctx.interfaces.getComponent(475, 11);
         if (wildyDitchWidget.isVisible())
         {
             log.debug("Handling Wilderness warning widget");
             wildyDitchWidget.doAction("Enter Wilderness");
             return true;
         }
-        String[] options = methods.npcChat.getOptions();
+        String[] options = ctx.npcChat.getOptions();
         if (options != null && Arrays.stream(options)
                 .anyMatch(text -> text != null && text.contains("Eeep! The Wilderness")))
         {
             log.debug("Handling wilderness warning dialog");
-            methods.npcChat.selectOption("Yes, I'm brave", true);
+            ctx.npcChat.selectOption("Yes, I'm brave", true);
             return true;
         }
 
-        for (int i = 0; i < MAX_INTERACT_DISTANCE; i++)
-        {
-            if (i + 1 >= path.size())
-            {
+        for (int i = 0; i < MAX_INTERACT_DISTANCE; i++) {
+            if (i + 1 >= path.size()) {
                 break;
             }
 
             WorldPoint a = path.get(i);
             WorldPoint b = path.get(i + 1);
 
-            Tile tileA = methods.tiles.getTile(methods, a);
-            Tile tileB = methods.tiles.getTile(methods, b);
+            Tile tileA = ctx.tiles.getTile(ctx, a);
+            Tile tileB = ctx.tiles.getTile(ctx, b);
 
             if (a.distanceTo(b) > 1
-                    || (tileA != null && tileB != null && !Reachable.isWalkable(b)))
-            {
+                    || (tileA != null && tileB != null && !Reachable.isWalkable(b))) {
                 Transport transport = transports.getOrDefault(a, List.of()).stream()
                         .filter(x -> x.getSource().equals(a) && x.getDestination().equals(b))
                         .findFirst()
@@ -264,8 +250,7 @@ public class Walker
 
                 if (transport != null)
                 {
-                    if (ignoreObstacle(transport.getSource(), 2))
-                    {
+                    if (ignoreObstacle(ctx, transport.getSource(), 2)) {
                         return true;
                     }
                     log.debug("Trying to use transport at {} to move {} -> {}", transport.getSource(), a, b);
@@ -276,13 +261,11 @@ public class Walker
             }
 
             // MLM Rocks
-            RSObject rockfall = methods.objects.query().named("Rockfall").located(new RSTile(methods, a)).first();
-            boolean hasPickaxe = !methods.inventory.query().namedContains("pickaxe").isEmpty() || !methods.equipment.query().namedContains("pickaxe").isEmpty();
-            if (rockfall != null && hasPickaxe)
-            {
+            RSObject rockfall = ctx.objects.query().named("Rockfall").located(new RSTile(ctx, a)).first();
+            boolean hasPickaxe = !ctx.inventory.query().namedContains("pickaxe").isEmpty() || !ctx.equipment.query().namedContains("pickaxe").isEmpty();
+            if (rockfall != null && hasPickaxe) {
                 log.debug("Handling MLM rockfall");
-                if (!methods.players.getMyPlayer().isIdle())
-                {
+                if (!ctx.players.getMyPlayer().isIdle()) {
                     return true;
                 }
                 rockfall.doAction("Mine");
@@ -297,12 +280,11 @@ public class Walker
             // Diagonal door bullshit
             if (Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() + b.getY()) > 1 && a.getPlane() == b.getPlane())
             {
-                RSObject wall = methods.objects.query().named("Door").located(new RSTile(methods, a)).filter(x -> x.getType() != RSObject.Type.WALL).first();
+                RSObject wall = ctx.objects.query().named("Door").located(new RSTile(ctx, a)).filter(x -> x.getType() != RSObject.Type.WALL).first();
 
                 if (wall != null && Reachable.isClosedDoor(wall.getID()))
                 {
-                    if (ignoreObstacle(wall.getLocation().getWorldLocation(), 1))
-                    {
+                    if (ignoreObstacle(ctx, wall.getLocation().getWorldLocation(), 1)) {
                         return true;
                     }
                     log.debug("Handling diagonal door at {}", wall.getLocation().getWorldLocation());
@@ -318,11 +300,9 @@ public class Walker
             }
 
             // Normal doors
-            if (Reachable.isDoored(tileA, tileB))
-            {
-                RSObject wall = new RSObject(methods, tileA.getWallObject(), RSObject.Type.WALL, tileA.getPlane());
-                if (ignoreObstacle(wall.getLocation().getWorldLocation(), 1))
-                {
+            if (Reachable.isDoored(tileA, tileB)) {
+                RSObject wall = new RSObject(ctx, tileA.getWallObject(), RSObject.Type.WALL, tileA.getPlane());
+                if (ignoreObstacle(ctx, wall.getLocation().getWorldLocation(), 1)) {
                     return true;
                 }
                 wall.doAction("Open");
@@ -332,11 +312,9 @@ public class Walker
                 return true;
             }
 
-            if (Reachable.isDoored(tileB, tileA))
-            {
-                RSObject wall = new RSObject(methods, tileB.getWallObject(), RSObject.Type.WALL, tileA.getPlane());
-                if (ignoreObstacle(wall.getLocation().getWorldLocation(), 1))
-                {
+            if (Reachable.isDoored(tileB, tileA)) {
+                RSObject wall = new RSObject(ctx, tileB.getWallObject(), RSObject.Type.WALL, tileA.getPlane());
+                if (ignoreObstacle(ctx, wall.getLocation().getWorldLocation(), 1)) {
                     return true;
                 }
                 wall.doAction("Open");
@@ -350,26 +328,21 @@ public class Walker
         return false;
     }
 
-    private static boolean ignoreObstacle(WorldPoint point, int distance)
-    {
-        if (methods.players.getMyPlayer().isMoving())
-        {
-            LocalPoint localDesti = methods.client.getLocalDestinationLocation();
-            if (localDesti != null)
-            {
-                WorldPoint desti = WorldPoint.fromLocal(methods.client, localDesti);
+    private boolean ignoreObstacle(WorldPoint point, int distance) {
+        if (ctx.players.getMyPlayer().isMoving()) {
+            LocalPoint localDesti = ctx.client.getLocalDestinationLocation();
+            if (localDesti != null) {
+                WorldPoint desti = WorldPoint.fromLocal(ctx.client, localDesti);
                 return desti.distanceTo2D(point) <= distance;
             }
         }
         return false;
     }
 
-    public static WorldPoint nearestWalkableTile(WorldPoint source, Predicate<WorldPoint> filter)
-    {
+    public WorldPoint nearestWalkableTile(WorldPoint source, Predicate<WorldPoint> filter) {
         CollisionMap cm = RegionManager.getGlobalCollisionMap();
 
-        if (!cm.fullBlock(source) && filter.test(source))
-        {
+        if (!cm.fullBlock(source) && filter.test(source)) {
             return source;
         }
 
@@ -393,16 +366,13 @@ public class Walker
         return null;
     }
 
-    public static WorldPoint nearestWalkableTile(WorldPoint source)
-    {
+    public WorldPoint nearestWalkableTile(WorldPoint source) {
         return nearestWalkableTile(source, x -> true);
     }
 
-    public static List<WorldPoint> remainingPath(List<WorldPoint> path)
-    {
-        RSPlayer local = methods.players.getMyPlayer();
-        if (local == null)
-        {
+    public List<WorldPoint> remainingPath(List<WorldPoint> path) {
+        RSPlayer local = ctx.players.getMyPlayer();
+        if (local == null) {
             return Collections.emptyList();
         }
 
@@ -416,43 +386,37 @@ public class Walker
         return path.subList(path.indexOf(nearest), path.size());
     }
 
-    public static List<WorldPoint> calculatePath(WorldArea destination)
-    {
-        RSPlayer local = methods.players.getMyPlayer();
-        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(destination);
+    public List<WorldPoint> calculatePath(WorldArea destination) {
+        RSPlayer local = ctx.players.getMyPlayer();
+        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(ctx, destination);
         List<WorldPoint> startPoints = new ArrayList<>(teleports.keySet());
         startPoints.add(local.getLocation().getWorldLocation());
-        return calculatePath(startPoints, destination);
+        return calculatePath(ctx, startPoints, destination);
     }
 
-    public static List<WorldPoint> calculatePath(List<WorldPoint> startPoints, WorldArea destination)
-    {
-        if (methods.client.isClientThread())
-        {
+    public List<WorldPoint> calculatePath(List<WorldPoint> startPoints, WorldArea destination) {
+        if (ctx.client.isClientThread()) {
             throw new RuntimeException("Calculate path cannot be called on client thread");
         }
         return new Pathfinder(RegionManager.getGlobalCollisionMap(), buildTransportLinks(), startPoints, destination, RegionManager.avoidWilderness()).find();
     }
 
-    public static List<WorldPoint> calculatePath(WorldPoint destination)
-    {
-        return calculatePath(destination.toWorldArea());
+    public List<WorldPoint> calculatePath(WorldPoint destination) {
+        return calculatePath(ctx, destination.toWorldArea());
     }
 
-    public static List<WorldPoint> calculatePath(List<WorldPoint> startPoints, WorldPoint destination)
-    {
-        return calculatePath(startPoints, destination.toWorldArea());
+    public List<WorldPoint> calculatePath(List<WorldPoint> startPoints, WorldPoint destination) {
+        return calculatePath(ctx, startPoints, destination.toWorldArea());
     }
 
-    private static List<WorldPoint> buildPath(
+    private List<WorldPoint> buildPath(
+
             List<WorldPoint> startPoints,
             WorldArea destination,
             boolean avoidWilderness,
             boolean forced
-    )
-    {
-        if (pathFuture == null)
-        {
+    ) {
+        if (pathFuture == null) {
             pathFuture = executor.submit(new Pathfinder(RegionManager.getGlobalCollisionMap(), buildTransportLinks(), startPoints, destination, avoidWilderness));
             currentDestination = destination;
         }
@@ -468,7 +432,7 @@ public class Walker
 		if (shouldRefresh)
 		{
 			log.debug("Path should refresh!");
-            if (!RegionManager.singleton.hasChanged()) {
+            if (!RegionManager.singleton.hasChanged(ctx)) {
                 shouldRefresh = false;
             }
 		}
@@ -483,8 +447,7 @@ public class Walker
 
         try
         {
-            if (methods.client.isClientThread())
-            {
+            if (ctx.client.isClientThread()) {
                 // 16-17ms for 60fps, 6-7ms for 144fps
                 return pathFuture.get(10, TimeUnit.MILLISECONDS);
             }
@@ -497,88 +460,72 @@ public class Walker
         }
     }
 
-    public static List<WorldPoint> buildPath()
-    {
-        if (currentDestination == null)
-        {
+    public List<WorldPoint> buildPath() {
+        if (currentDestination == null) {
             return List.of();
         }
-        return buildPath(currentDestination);
+        return buildPath(ctx, currentDestination);
     }
 
-    public static List<WorldPoint> buildPath(WorldArea destination, boolean avoidWilderness, boolean forced)
-    {
-        RSPlayer local = methods.players.getMyPlayer();
-        WorldPoint playerPoint = WorldPoint.fromLocalInstance(methods.client, local.getLocation().getLocalLocation());
-        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(destination);
+    public List<WorldPoint> buildPath(WorldArea destination, boolean avoidWilderness, boolean forced) {
+        RSPlayer local = ctx.players.getMyPlayer();
+        WorldPoint playerPoint = WorldPoint.fromLocalInstance(ctx.client, local.getLocation().getLocalLocation());
+        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(ctx, destination);
         List<WorldPoint> startPoints = new ArrayList<>(teleports.keySet());
         startPoints.add(playerPoint);
 
-        return buildPath(startPoints, destination, avoidWilderness, forced);
+        return buildPath(ctx, startPoints, destination, avoidWilderness, forced);
     }
 
-    public static List<WorldPoint> buildPath(WorldArea destination)
-    {
-        return buildPath(destination, RegionManager.avoidWilderness(), false);
+    public List<WorldPoint> buildPath(WorldArea destination) {
+        return buildPath(ctx, destination, RegionManager.avoidWilderness(), false);
     }
 
-    public static List<WorldPoint> buildPath(WorldArea destination, boolean forced)
-    {
-        return buildPath(destination, RegionManager.avoidWilderness(), forced);
+    public List<WorldPoint> buildPath(WorldArea destination, boolean forced) {
+        return buildPath(ctx, destination, RegionManager.avoidWilderness(), forced);
     }
 
-    public static List<WorldPoint> buildPath(WorldPoint destination)
-    {
-        return buildPath(destination.toWorldArea());
+    public List<WorldPoint> buildPath(WorldPoint destination) {
+        return buildPath(ctx, destination.toWorldArea());
     }
 
-    public static List<WorldPoint> buildPath(WorldPoint destination, boolean forced)
-    {
-        return buildPath(destination.toWorldArea(), forced);
+    public List<WorldPoint> buildPath(WorldPoint destination, boolean forced) {
+        return buildPath(ctx, destination.toWorldArea(), forced);
     }
 
-    public static List<WorldPoint> buildPath(WorldPoint destination, boolean avoidWilderness, boolean forced)
-    {
-        return buildPath(destination.toWorldArea(), avoidWilderness, forced);
+    public List<WorldPoint> buildPath(WorldPoint destination, boolean avoidWilderness, boolean forced) {
+        return buildPath(ctx, destination.toWorldArea(), avoidWilderness, forced);
     }
 
-    public static List<WorldPoint> buildPath(List<WorldPoint> startPoints, WorldPoint destination, boolean avoidWilderness, boolean forced)
-    {
-        return buildPath(startPoints, destination.toWorldArea(), avoidWilderness, forced);
+    public List<WorldPoint> buildPath(List<WorldPoint> startPoints, WorldPoint destination, boolean avoidWilderness, boolean forced) {
+        return buildPath(ctx, startPoints, destination.toWorldArea(), avoidWilderness, forced);
     }
 
-    public static Map<WorldPoint, List<Transport>> buildTransportLinks()
-    {
+    public Map<WorldPoint, List<Transport>> buildTransportLinks() {
         Map<WorldPoint, List<Transport>> out = new HashMap<>();
-        if (!ConfigManager.useTransports)
-        {
+        if (!ConfigManager.useTransports) {
             return out;
         }
 
-        for (Transport transport : TransportLoader.buildTransports())
-        {
+        for (Transport transport : TransportLoader.buildTransports()) {
             out.computeIfAbsent(transport.getSource(), x -> new ArrayList<>()).add(transport);
         }
 
         return out;
     }
 
-    public static LinkedHashMap<WorldPoint, Teleport> buildTeleportLinks(WorldArea destination)
-    {
+    public LinkedHashMap<WorldPoint, Teleport> buildTeleportLinks(WorldArea destination) {
         LinkedHashMap<WorldPoint, Teleport> out = new LinkedHashMap<>();
-        if (!ConfigManager.useTeleports)
-        {
+        if (!ConfigManager.useTeleports) {
             return out;
         }
 
-        RSPlayer local = methods.players.getMyPlayer();
-        WorldPoint playerPoint = WorldPoint.fromLocalInstance(methods.client, local.getLocation().getLocalLocation());
+        RSPlayer local = ctx.players.getMyPlayer();
+        WorldPoint playerPoint = WorldPoint.fromLocalInstance(ctx.client, local.getLocation().getLocalLocation());
 
-        for (Teleport teleport : TeleportLoader.buildTeleports())
-        {
+        for (Teleport teleport : TeleportLoader.buildTeleports(ctx)) {
             if (teleport.getDestination().distanceTo(playerPoint) > 50
-                    && destination.distanceTo(playerPoint) > destination.distanceTo(teleport.getDestination()) + 20)
-            {
+                    && destination.distanceTo(playerPoint) > destination.distanceTo(teleport.getDestination()) + 20) {
                 out.putIfAbsent(teleport.getDestination(), teleport);
             }
         }
@@ -586,44 +533,36 @@ public class Walker
         return out;
     }
 
-    public static Map<WorldPoint, List<Transport>> buildTransportLinksOnPath(List<WorldPoint> path)
-    {
+    public Map<WorldPoint, List<Transport>> buildTransportLinksOnPath(List<WorldPoint> path) {
         Map<WorldPoint, List<Transport>> out = new HashMap<>();
-        for (Transport transport : TransportLoader.buildTransports())
-        {
+        for (Transport transport : TransportLoader.buildTransports()) {
             WorldPoint destination = transport.getDestination();
-            if (path.contains(destination))
-            {
+            if (path.contains(destination)) {
                 out.computeIfAbsent(transport.getSource(), x -> new ArrayList<>()).add(transport);
             }
         }
         return out;
     }
 
-    public static LinkedHashMap<WorldPoint, Teleport> buildTeleportLinksOnPath(List<WorldPoint> path)
-    {
+    public LinkedHashMap<WorldPoint, Teleport> buildTeleportLinksOnPath(List<WorldPoint> path) {
         LinkedHashMap<WorldPoint, Teleport> out = new LinkedHashMap<>();
-        for (Teleport teleport : TeleportLoader.buildTeleports())
-        {
+        for (Teleport teleport : TeleportLoader.buildTeleports(ctx)) {
             WorldPoint destination = teleport.getDestination();
-            if (path.contains(destination))
-            {
+            if (path.contains(destination)) {
                 out.putIfAbsent(destination, teleport);
             }
         }
         return out;
     }
 
-    public static List<Tile> pathTo(Tile start, Tile end)
-    {
+    public List<Tile> pathTo(Tile start, Tile end) {
 
         int z = start.getPlane();
-        if (z != end.getPlane())
-        {
+        if (z != end.getPlane()) {
             return null;
         }
 
-        CollisionData[] collisionData = methods.client.getCollisionMaps();
+        CollisionData[] collisionData = ctx.client.getCollisionMaps();
         if (collisionData == null)
         {
             return null;
@@ -849,7 +788,7 @@ public class Walker
         }
 
         int checkpointTileNumber = 1;
-        Tile[][][] tiles = methods.client.getScene().getTiles();
+        Tile[][][] tiles = ctx.client.getScene().getTiles();
         List<Tile> checkpointTiles = new ArrayList<>();
         while (index-- > 0)
         {
@@ -864,17 +803,14 @@ public class Walker
         return checkpointTiles;
     }
 
-    public static List<WorldPoint> pathTo(WorldPoint start, WorldPoint end)
-    {
-        if (start.getPlane() != end.getPlane())
-        {
+    public List<WorldPoint> pathTo(WorldPoint start, WorldPoint end) {
+        if (start.getPlane() != end.getPlane()) {
             return null;
         }
 
-        LocalPoint sourceLp = LocalPoint.fromWorld(methods.client, start.getX(), start.getY());
-        LocalPoint targetLp = LocalPoint.fromWorld(methods.client, end.getX(), end.getY());
-        if (sourceLp == null || targetLp == null)
-        {
+        LocalPoint sourceLp = LocalPoint.fromWorld(ctx.client, start.getX(), start.getY());
+        LocalPoint targetLp = LocalPoint.fromWorld(ctx.client, end.getX(), end.getY());
+        if (sourceLp == null || targetLp == null) {
             return null;
         }
 
@@ -883,11 +819,11 @@ public class Walker
         int otherX = targetLp.getSceneX();
         int otherY = targetLp.getSceneY();
 
-        Tile[][][] tiles = methods.client.getScene().getTiles();
+        Tile[][][] tiles = ctx.client.getScene().getTiles();
         Tile sourceTile = tiles[start.getPlane()][thisX][thisY];
 
         Tile targetTile = tiles[start.getPlane()][otherX][otherY];
-        List<Tile> checkpointTiles = pathTo(sourceTile, targetTile);
+        List<Tile> checkpointTiles = pathTo(ctx, sourceTile, targetTile);
         if (checkpointTiles == null)
         {
             return null;
@@ -904,22 +840,19 @@ public class Walker
         return checkpointWPs;
     }
 
-    public static boolean canPathTo(WorldPoint start, WorldPoint destination)
-    {
-        List<WorldPoint> pathTo = pathTo(start, destination);
+    public boolean canPathTo(WorldPoint start, WorldPoint destination) {
+        List<WorldPoint> pathTo = pathTo(ctx, start, destination);
         return pathTo != null && pathTo.contains(destination);
     }
 
-    public static boolean canWalk(WorldPoint destination)
-    {
-        return canWalk(destination.toWorldArea());
+    public boolean canWalk(WorldPoint destination) {
+        return canWalk(ctx, destination.toWorldArea());
     }
 
-    public static boolean canWalk(WorldArea destination)
-    {
+    public boolean canWalk(WorldArea destination) {
         Map<WorldPoint, List<Transport>> transports = buildTransportLinks();
-        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(destination);
-        List<WorldPoint> path = buildPath(destination);
+        LinkedHashMap<WorldPoint, Teleport> teleports = buildTeleportLinks(ctx, destination);
+        List<WorldPoint> path = buildPath(ctx, destination);
         return path != null && path.stream().anyMatch(p -> destination.contains(p));
     }
 }

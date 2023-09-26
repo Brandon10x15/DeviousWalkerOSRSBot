@@ -1,9 +1,11 @@
 package devious_walker.pathfinder.model.dto;
-import lombok.Value;
-import net.runelite.api.coords.WorldPoint;
+
 import devious_walker.pathfinder.TransportLoader;
 import devious_walker.pathfinder.model.Transport;
 import devious_walker.pathfinder.model.requirement.Requirements;
+import lombok.Value;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.rsb.methods.MethodContext;
 
 @Value
 public class TransportDto
@@ -14,8 +16,7 @@ public class TransportDto
     Integer objectId;
     Requirements requirements;
 
-    public Transport toTransport()
-    {
-        return TransportLoader.objectTransport(source, destination, objectId, action, requirements);
+    public Transport toTransport(MethodContext ctx) {
+        return TransportLoader.objectTransport(ctx, source, destination, objectId, action, requirements);
     }
 }

@@ -1,12 +1,11 @@
 package devious_walker.pathfinder.model;
 
-import net.runelite.api.coords.WorldArea;
 import devious_walker.DeviousWalker;
+import net.runelite.api.coords.WorldArea;
+import net.runelite.rsb.methods.MethodContext;
 
 import java.util.Arrays;
 import java.util.Comparator;
-
-import static net.runelite.rsb.methods.MethodProvider.methods;
 
 public enum BankLocation
 {
@@ -62,17 +61,15 @@ public enum BankLocation
 		return area;
 	}
 
-	public static BankLocation getNearest()
-	{
-		return Arrays.stream(values())
-				.min(Comparator.comparingInt(x -> x.getArea().distanceTo2D(methods.players.getMyPlayer().getLocation().getWorldLocation())))
-				.orElse(null);
-	}
+    public static BankLocation getNearest(MethodContext ctx) {
+        return Arrays.stream(values())
+                .min(Comparator.comparingInt(x -> x.getArea().distanceTo2D(ctx.players.getMyPlayer().getLocation().getWorldLocation())))
+                .orElse(null);
+    }
 
-	public static BankLocation getNearestPath()
-	{
-		return Arrays.stream(values())
-				.min(Comparator.comparingInt(x -> DeviousWalker.calculateDistance(x.getArea())))
-				.orElse(null);
-	}
+    public static BankLocation getNearestPath(MethodContext ctx) {
+        return Arrays.stream(values())
+                .min(Comparator.comparingInt(x -> DeviousWalker.calculateDistance(ctx, x.getArea())))
+                .orElse(null);
+    }
 }

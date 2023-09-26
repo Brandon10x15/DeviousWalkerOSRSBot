@@ -5,6 +5,7 @@ import lombok.Getter;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.rsb.internal.globval.enums.MagicBook;
 import net.runelite.rsb.internal.globval.enums.Spell;
+import net.runelite.rsb.methods.MethodContext;
 
 @AllArgsConstructor
 @Getter
@@ -190,8 +191,7 @@ public enum TeleportSpell
 	@Getter
 	private final WorldPoint point;
 
-	public boolean canCast()
-	{
-		return spell.canCast();
-	}
+    public boolean canCast(MethodContext ctx) {
+        return spell.canCast(ctx);
+    }
 }

@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.rsb.methods.MethodContext;
 import net.runelite.rsb.wrappers.*;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -28,33 +29,32 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static devious_walker.pathfinder.model.MovementConstants.*;
-import static net.runelite.rsb.methods.MethodProvider.methods;
 
 @Slf4j
-public class TransportLoader
-{
+public class TransportLoader {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static final List<Transport> ALL_STATIC_TRANSPORTS = new ArrayList<>();
     private static final List<Transport> LAST_TRANSPORT_LIST = new ArrayList<>();
+    private final MethodContext ctx;
 
-    public static void init()
-    {
+    public TransportLoader(MethodContext ctx) {
+        this.ctx = ctx;
+    }
+
+    public Runnable init() {
         log.info("Loading transports");
-        try (InputStream stream = Walker.class.getResourceAsStream("/transports.json"))
-        {
-            if (stream == null)
-            {
+        try (InputStream stream = Walker.class.getResourceAsStream("/transports.json")) {
+            if (stream == null) {
                 log.error("Failed to load transports.");
-                return;
+                return null;
             }
 
             TransportDto[] json = GSON.fromJson(new String(stream.readAllBytes()), TransportDto[].class);
 
-            List<Transport> list = Arrays.stream(json)
-                    .map(TransportDto::toTransport)
-                    .collect(Collectors.toList());
-            ALL_STATIC_TRANSPORTS.addAll(list);
+            for (var trans : json) {
+                ALL_STATIC_TRANSPORTS.add(trans.toTransport(ctx));
+            }
         }
         catch (IOException e)
         {
@@ -62,15 +62,14 @@ public class TransportLoader
         }
 
         log.info("Loaded {} transports", ALL_STATIC_TRANSPORTS.size());
+        return null;
     }
 
-    public static List<Transport> buildTransports()
-    {
+    public List<Transport> buildTransports() {
         return LAST_TRANSPORT_LIST;
     }
 
-    public static void refreshTransports()
-    {
+    public void refreshTransports() {
         GameThread.invoke(() ->
         {
             List<Transport> filteredStatic = ALL_STATIC_TRANSPORTS.stream()
@@ -79,7 +78,7 @@ public class TransportLoader
 
             List<Transport> transports = new ArrayList<>();
 
-            int gold = methods.inventory.getItem(995) != null ? methods.inventory.getItem(995).getStackSize() : 0;
+            int gold = ctx.inventory.getItem(995) != null ? ctx.inventory.getItem(995).getStackSize() : 0;
 
             if (gold >= 30)
             {
@@ -95,8 +94,7 @@ public class TransportLoader
                 }
             }
 
-            if (methods.worldHopper.isCurrentWorldMembers())
-            {
+            if (ctx.worldHopper.isCurrentWorldMembers()) {
                 //Shamans
                 transports.add(objectTransport(new WorldPoint(1312, 3685, 0), new WorldPoint(1312, 10086, 0), 34405, "Enter"));
 
@@ -121,17 +119,14 @@ public class TransportLoader
                 transports.add(npcTransport(new WorldPoint(1779, 3418, 0), new WorldPoint(1784, 3458, 0), 7484, "Travel"));
 
                 // Port sarim
-                if (methods.client.getVarbitValue(WalkerVarbits.VEOS_HAS_TALKED_TO_BEFORE) == 0) // First time talking to Veos
+                if (ctx.client.getVarbitValue(WalkerVarbits.VEOS_HAS_TALKED_TO_BEFORE) == 0) // First time talking to Veos
                 {
-                    if (methods.client.getVarbitValue(QuestVarbits.QUEST_X_MARKS_THE_SPOT.getId()) >= 7)
-                    {
+                    if (ctx.client.getVarbitValue(QuestVarbits.QUEST_X_MARKS_THE_SPOT.getId()) >= 7) {
                         transports.add(npcDialogTransport(new WorldPoint(3054, 3245, 0),
                                 new WorldPoint(1824, 3691, 0),
                                 8484,
                                 "Can you take me to Great Kourend?"));
-                    }
-                    else
-                    {
+                    } else {
                         transports.add(npcDialogTransport(new WorldPoint(3054, 3245, 0),
                                 new WorldPoint(1824, 3691, 0),
                                 8484,
@@ -187,8 +182,7 @@ public class TransportLoader
                 }
 
                 // Eagles peak cave
-                if (methods.client.getVarpValue(934) >= 15)
-                {
+                if (ctx.client.getVarpValue(934) >= 15) {
                     // Entrance
                     transports.add(objectTransport(new WorldPoint(2328, 3496, 0), new WorldPoint(1994, 4983, 3), 19790,
                             "Enter"));
@@ -208,8 +202,7 @@ public class TransportLoader
                 transports.add(npcTransport(new WorldPoint(2213, 3794, 0), new WorldPoint(2620, 3692, 0), NpcID.LOKAR_SEARUNNER_9306, "Rellekka"));
 
                 // Corsair's Cove
-                if (methods.skills.getCurrentLevel(Skill.AGILITY) >= 10)
-                {
+                if (ctx.skills.getCurrentLevel(Skill.AGILITY) >= 10) {
                     transports.add(objectTransport(new WorldPoint(2546, 2871, 0), new WorldPoint(2546, 2873, 0), 31757,
                             "Climb"));
                     transports.add(objectTransport(new WorldPoint(2546, 2873, 0), new WorldPoint(2546, 2871, 0), 31757,
@@ -229,8 +222,7 @@ public class TransportLoader
                 }
 
                 // Digsite gate
-                if (methods.client.getVarbitValue(WalkerVarbits.KUDOS) >= 153)
-                {
+                if (ctx.client.getVarbitValue(WalkerVarbits.KUDOS) >= 153) {
                     transports.add(objectTransport(new WorldPoint(3295, 3429, 0), new WorldPoint(3296, 3429, 0), 24561,
                             "Open"));
                     transports.add(objectTransport(new WorldPoint(3296, 3429, 0), new WorldPoint(3295, 3429, 0), 24561,
@@ -242,15 +234,11 @@ public class TransportLoader
                 }
 
                 // Fairy Rings
-                if (!methods.equipment.query().id(ItemID.DRAMEN_STAFF, ItemID.LUNAR_STAFF).isEmpty()
-                        && Quests.getState(Quest.FAIRYTALE_II__CURE_A_QUEEN) != QuestState.NOT_STARTED)
-                {
-                    for (FairyRingLocation sourceRing : FairyRingLocation.values())
-                    {
-                        for (FairyRingLocation destRing : FairyRingLocation.values())
-                        {
-                            if (sourceRing != destRing)
-                            {
+                if (!ctx.equipment.query().id(ItemID.DRAMEN_STAFF, ItemID.LUNAR_STAFF).isEmpty()
+                        && Quests.getState(Quest.FAIRYTALE_II__CURE_A_QUEEN) != QuestState.NOT_STARTED) {
+                    for (FairyRingLocation sourceRing : FairyRingLocation.values()) {
+                        for (FairyRingLocation destRing : FairyRingLocation.values()) {
+                            if (sourceRing != destRing) {
                                 transports.add(fairyRingTransport(sourceRing, destRing));
                             }
                         }
@@ -330,8 +318,7 @@ public class TransportLoader
             // Draynor manor basement
             for (var entry : DRAYNOR_MANOR_BASEMENT_DOORS.entrySet())
             {
-                if (methods.client.getVarbitValue(entry.getKey()) == 1)
-                {
+                if (ctx.client.getVarbitValue(entry.getKey()) == 1) {
                     var points = entry.getValue();
                     transports.add(lockingDoorTransport(points.getLeft(), points.getRight(), 11450));
                     transports.add(lockingDoorTransport(points.getRight(), points.getLeft(), 11450));
@@ -351,13 +338,10 @@ public class TransportLoader
             transports.add(objectTransport(new WorldPoint(2012, 9004, 1), new WorldPoint(2523, 2860, 0), 31790, "Climb"));
 
             // Rimmington docks to and from Corsair Cove using Captain Tock's ship
-            if (Quests.isFinished(Quest.THE_CORSAIR_CURSE))
-            {
+            if (Quests.isFinished(Quest.THE_CORSAIR_CURSE)) {
                 transports.add(npcTransport(new WorldPoint(2910, 3226, 0), new WorldPoint(2578, 2837, 1), NpcID.CABIN_BOY_COLIN_7967, "Travel"));
                 transports.add(npcTransport(new WorldPoint(2574, 2835, 1), new WorldPoint(2909, 3230, 1), NpcID.CABIN_BOY_COLIN_7967, "Travel"));
-            }
-            else if (methods.client.getVarbitValue(QuestVarbits.QUEST_THE_CORSAIR_CURSE.getId()) >= 15)
-            {
+            } else if (ctx.client.getVarbitValue(QuestVarbits.QUEST_THE_CORSAIR_CURSE.getId()) >= 15) {
                 transports.add(npcTransport(new WorldPoint(2910, 3226, 0), new WorldPoint(2578, 2837, 1), NpcID.CAPTAIN_TOCK_7958, "Travel"));
                 transports.add(npcTransport(new WorldPoint(2574, 2835, 1), new WorldPoint(2909, 3230, 1), NpcID.CAPTAIN_TOCK_7958, "Travel"));
             }
@@ -366,10 +350,8 @@ public class TransportLoader
             transports.add(lockingDoorTransport(new WorldPoint(3123, 3244, 0), new WorldPoint(3123, 3243, 0), ObjectID.PRISON_GATE_2881));
             transports.add(lockingDoorTransport(new WorldPoint(3123, 3243, 0), new WorldPoint(3123, 3244, 0), ObjectID.PRISON_GATE_2881));
 
-            if (!methods.inventory.query().id(SLASH_ITEMS).isEmpty() || !methods.equipment.query().id(SLASH_ITEMS).isEmpty())
-            {
-                for (Pair<WorldPoint, WorldPoint> pair : SLASH_WEB_POINTS)
-                {
+            if (!ctx.inventory.query().id(SLASH_ITEMS).isEmpty() || !ctx.equipment.query().id(SLASH_ITEMS).isEmpty()) {
+                for (Pair<WorldPoint, WorldPoint> pair : SLASH_WEB_POINTS) {
                     transports.add(slashWebTransport(pair.getLeft(), pair.getRight()));
                     transports.add(slashWebTransport(pair.getRight(), pair.getLeft()));
                 }
@@ -381,16 +363,15 @@ public class TransportLoader
         });
     }
 
-    public static Transport lockingDoorTransport(
+    public Transport lockingDoorTransport(
             WorldPoint source,
             WorldPoint destination,
             int openDoorId
-    )
-    {
+    ) {
         return new Transport(source, destination, 0, 0, () ->
         {
             log.debug("lockingDoorTransport: " + source + " -> " + destination);
-            RSObject openDoor = methods.objects.query().id(openDoorId).distance(new RSTile(methods, source), 1).first();
+            RSObject openDoor = ctx.objects.query().id(openDoorId).distance(new RSTile(ctx, source), 1).first();
             if (openDoor != null)
             {
                 openDoor.doAction("Open");
@@ -398,24 +379,23 @@ public class TransportLoader
         });
     }
 
-    public static Transport trapDoorTransport(
+    public Transport trapDoorTransport(
             WorldPoint source,
             WorldPoint destination,
             int closedId,
             int openedId
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("trapDoorTransport: " + source + " -> " + destination);
-            RSObject openedTrapdoor = methods.objects.query().id(openedId).distance(new RSTile(methods, source), 5).first();
+            RSObject openedTrapdoor = ctx.objects.query().id(openedId).distance(new RSTile(ctx, source), 5).first();
             if (openedTrapdoor != null)
             {
                 openedTrapdoor.doAction("");
                 return;
             }
 
-            RSObject closedTrapDoor = methods.objects.query().id(closedId).distance(new RSTile(methods, source), 5).first();
+            RSObject closedTrapDoor = ctx.objects.query().id(closedId).distance(new RSTile(ctx, source), 5).first();
             if (closedTrapDoor != null)
             {
                 closedTrapDoor.doAction("");
@@ -423,15 +403,14 @@ public class TransportLoader
         });
     }
 
-    public static Transport fairyRingTransport(
+    public Transport fairyRingTransport(
             FairyRingLocation source,
             FairyRingLocation destination
-    )
-    {
+    ) {
         return new Transport(source.getLocation(), destination.getLocation(), Integer.MAX_VALUE, 0, () ->
         {
             log.debug("Looking for fairy ring at {} to {}", source.getLocation(), destination.getLocation());
-            RSObject ring = methods.objects.query().named("Fairy ring").distance(new RSTile(methods, source.getLocation()), 5).first();
+            RSObject ring = ctx.objects.query().named("Fairy ring").distance(new RSTile(ctx, source.getLocation()), 5).first();
 
             if (ring == null)
             {
@@ -456,9 +435,8 @@ public class TransportLoader
                 return;
             }
 
-            if (methods.interfaces.getComponent(WidgetInfo.FAIRY_RING).isVisible())
-            {
-                destination.travel();
+            if (ctx.interfaces.getComponent(WidgetInfo.FAIRY_RING).isVisible()) {
+                destination.travel(ctx);
                 return;
             }
 
@@ -466,41 +444,39 @@ public class TransportLoader
         });
     }
 
-    public static Transport itemUseTransport(
+    public Transport itemUseTransport(
             WorldPoint source,
             WorldPoint destination,
             int itemId,
             int objId
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("itemUseTransport: " + source + " -> " + destination);
-            RSItem item = methods.inventory.getItem(itemId);
+            RSItem item = ctx.inventory.getItem(itemId);
             if (item == null)
             {
                 return;
             }
 
-            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).first();
+            RSObject transport = ctx.objects.query().id(objId).distance(new RSTile(ctx, source), 5).first();
             if (transport != null)
             {
-                methods.inventory.useItem(itemId, transport);
+                ctx.inventory.useItem(itemId, transport);
             }
         });
     }
 
-    public static Transport npcTransport(
+    public Transport npcTransport(
             WorldPoint source,
             WorldPoint destination,
             int npcId,
             String actions
-    )
-    {
+    ) {
         return new Transport(source, destination, 10, 0, () ->
         {
             log.debug("npcTransport: " + source + " -> " + destination);
-            RSNPC npc = methods.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getID() == npcId);
+            RSNPC npc = ctx.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getID() == npcId);
             if (npc != null)
             {
                 npc.doAction(actions);
@@ -508,17 +484,16 @@ public class TransportLoader
         });
     }
 
-    public static Transport npcTransport(
+    public Transport npcTransport(
             WorldPoint source,
             WorldPoint destination,
             String npcName,
             String actions
-    )
-    {
+    ) {
         return new Transport(source, destination, 10, 0, () ->
         {
             log.debug("npcTransport: " + source + " -> " + destination);
-            RSNPC npc =  methods.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getName().equalsIgnoreCase(npcName));
+            RSNPC npc = ctx.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getName().equalsIgnoreCase(npcName));
             if (npc != null)
             {
                 npc.doAction(actions);
@@ -526,26 +501,22 @@ public class TransportLoader
         });
     }
 
-    public static Transport npcDialogTransport(
+    public Transport npcDialogTransport(
             WorldPoint source,
             WorldPoint destination,
             int npcId,
             String... chatOptions
-    )
-    {
+    ) {
         return new Transport(source, destination, 10, 0, () ->
         {
             log.debug("npcDialogTransport: " + source + " -> " + destination);
-            if (methods.npcChat.canContinue())
-            {
-                methods.npcChat.clickContinue(true);
+            if (ctx.npcChat.canContinue()) {
+                ctx.npcChat.clickContinue(true);
                 return;
             }
-            if (methods.npcChat.hasOptions())
-            {
+            if (ctx.npcChat.hasOptions()) {
                 for (String option : chatOptions) {
-                    if (methods.npcChat.selectOption(option, true))
-                    {
+                    if (ctx.npcChat.selectOption(option, true)) {
                         return;
                     }
                 }
@@ -553,7 +524,7 @@ public class TransportLoader
                 return;
             }
 
-            RSNPC npc = methods.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getID() == npcId);
+            RSNPC npc = ctx.npcs.getNearest(x -> x.getLocation().getWorldLocation().distanceTo(source) <= 10 && x.getID() == npcId);
             if (npc != null)
             {
                 npc.doAction("");
@@ -561,41 +532,39 @@ public class TransportLoader
         });
     }
 
-    public static Transport objectTransport(
+    public Transport objectTransport(
             WorldPoint source,
             WorldPoint destination,
             int objId,
             String actions
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("objectTransport: " + source + " -> " + destination);
-            RSObject first = methods.objects.query().id(objId).located(new RSTile(methods, source)).first();
+            RSObject first = ctx.objects.query().id(objId).located(new RSTile(ctx, source)).first();
             if (first != null)
             {
                 first.doAction(actions);
                 return;
             }
 
-            methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).results().stream()
+            ctx.objects.query().id(objId).distance(new RSTile(ctx, source), 5).results().stream()
                     .min(Comparator.comparingInt(o -> o.getLocation().getWorldLocation().distanceTo(source)))
                     .ifPresent(obj -> obj.doAction(actions));
         });
     }
 
-    public static Transport objectTransport(
+    public Transport objectTransport(
             WorldPoint source,
             WorldPoint destination,
             int objId,
             String actions,
             Requirements requirements
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("objectTransport: " + source + " -> " + destination);
-            RSObject first = methods.objects.query().id(objId).located(new RSTile(methods, source)).first();
+            RSObject first = ctx.objects.query().id(objId).located(new RSTile(ctx, source)).first();
             if (first != null)
             {
                 log.debug("Transport found {}", first.getLocation().getWorldLocation());
@@ -604,7 +573,7 @@ public class TransportLoader
             }
 
             log.debug("Transport not found {}, {}", source, objId);
-            methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).results().stream()
+            ctx.objects.query().id(objId).distance(new RSTile(ctx, source), 5).results().stream()
                     .min(Comparator.comparingInt(o -> o.getLocation().getWorldLocation().distanceTo(source)))
                     .ifPresent(obj -> obj.doAction(actions));
         }, requirements);
@@ -630,34 +599,30 @@ public class TransportLoader
     }
      */
 
-    public static Transport objectDialogTransport(
+    public Transport objectDialogTransport(
             WorldPoint source,
             WorldPoint destination,
             int objId,
             String actions,
             String chatOptions
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("objectDialogTransport: " + source + " -> " + destination);
-            if (methods.npcChat.isOpen())
-            {
-                if (methods.npcChat.canContinue())
-                {
-                    methods.npcChat.clickContinue(true);
+            if (ctx.npcChat.isOpen()) {
+                if (ctx.npcChat.canContinue()) {
+                    ctx.npcChat.clickContinue(true);
                     return;
                 }
 
-                if (methods.npcChat.selectOption(chatOptions, true))
-                {
+                if (ctx.npcChat.selectOption(chatOptions, true)) {
                     return;
                 }
 
                 return;
             }
 
-            RSObject transport = methods.objects.query().id(objId).distance(new RSTile(methods, source), 5).first();
+            RSObject transport = ctx.objects.query().id(objId).distance(new RSTile(ctx, source), 5).first();
             if (transport != null)
             {
                 transport.doAction(actions);
@@ -665,15 +630,14 @@ public class TransportLoader
         });
     }
 
-    public static Transport slashWebTransport(
+    public Transport slashWebTransport(
             WorldPoint source,
             WorldPoint destination
-    )
-    {
+    ) {
         return new Transport(source, destination, Integer.MAX_VALUE, 0, () ->
         {
             log.debug("slashWebTransport: " + source + " -> " + destination);
-            RSObject transport = methods.objects.query().namedContains("Web").distance(new RSTile(methods, source), 5).first();
+            RSObject transport = ctx.objects.query().namedContains("Web").distance(new RSTile(ctx, source), 5).first();
             // TODO: check has action
             //RSObject transport = TileObjects.getFirstSurrounding(source, 5, it -> it.getName() != null && it.getName().contains("Web") && it.hasAction("Slash"));
             if (transport != null)
@@ -682,13 +646,12 @@ public class TransportLoader
             }
             else
             {
-                DeviousWalker.walk(destination);
+                DeviousWalker.walk(ctx, destination);
             }
         });
     }
 
-    private static Transport spritTreeTransport(WorldPoint source, WorldPoint target, String location)
-    {
+    private Transport spritTreeTransport(WorldPoint source, WorldPoint target, String location) {
         return new Transport(
                 source,
                 target,
@@ -697,7 +660,7 @@ public class TransportLoader
                 () ->
                 {
                     log.debug("spritTreeTransport: " + source + " -> " + target);
-                    RSWidget treeWidget = methods.interfaces.getComponent(187, 3);
+                    RSWidget treeWidget = ctx.interfaces.getComponent(187, 3);
                     if (treeWidget.isVisible())
                     {
                         // TODO: check if this action works, if not do click
@@ -709,7 +672,7 @@ public class TransportLoader
                         return;
                     }
 
-                    RSObject tree = methods.objects.query().id(1293, 1294, 1295).distance(new RSTile(methods, source), 5).first();
+                    RSObject tree = ctx.objects.query().id(1293, 1294, 1295).distance(new RSTile(ctx, source), 5).first();
                     if (tree != null)
                     {
                         // TODO: check this works
@@ -722,8 +685,7 @@ public class TransportLoader
                 });
     }
 
-    private static Transport mushtreeTransport(WorldPoint source, WorldPoint target, WalkerWidgetInfo widget)
-    {
+    private Transport mushtreeTransport(WorldPoint source, WorldPoint target, WalkerWidgetInfo widget) {
         return new Transport(
                 source,
                 target,
@@ -732,7 +694,7 @@ public class TransportLoader
                 () ->
                 {
                     log.debug("mushtreeTransport: " + source + " -> " + target);
-                    RSWidget treeWidget = methods.interfaces.getComponent(widget.getGroupId(), widget.getChildId());
+                    RSWidget treeWidget = ctx.interfaces.getComponent(widget.getGroupId(), widget.getChildId());
                     if (treeWidget.isVisible())
                     {
                         // TODO:
@@ -741,7 +703,7 @@ public class TransportLoader
                         return;
                     }
 
-                    RSObject tree = methods.objects.query().named("Magic Mushtree").distance(new RSTile(methods, source), 5).first();
+                    RSObject tree = ctx.objects.query().named("Magic Mushtree").distance(new RSTile(ctx, source), 5).first();
                     if (tree != null)
                     {
                         tree.doAction("Use");

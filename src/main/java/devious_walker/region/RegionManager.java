@@ -1,17 +1,23 @@
 package devious_walker.region;
 
 import devious_walker.ConfigManager;
+import devious_walker.Reachable;
 import devious_walker.enums.WalkerVarbits;
 import devious_walker.pathfinder.GlobalCollisionMap;
+import devious_walker.pathfinder.TeleportLoader;
+import devious_walker.pathfinder.TransportLoader;
+import devious_walker.pathfinder.Walker;
+import devious_walker.pathfinder.model.Teleport;
+import devious_walker.pathfinder.model.Transport;
+import devious_walker.pathfinder.model.poh.HousePortal;
+import devious_walker.pathfinder.model.poh.JewelryBox;
 import devious_walker.quests.QuestVarbits;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Tile;
-import net.runelite.api.Varbits;
 import net.runelite.api.coords.Direction;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
@@ -20,27 +26,12 @@ import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
-
-import devious_walker.Reachable;
-import devious_walker.pathfinder.TeleportLoader;
-import devious_walker.pathfinder.TransportLoader;
-import devious_walker.pathfinder.Walker;
-import devious_walker.pathfinder.model.Teleport;
-import devious_walker.pathfinder.model.Transport;
-import devious_walker.pathfinder.model.poh.HousePortal;
-import devious_walker.pathfinder.model.poh.JewelryBox;
-import net.runelite.rsb.internal.wrappers.TileFlags;
+import net.runelite.rsb.methods.MethodContext;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.swing.plaf.synth.Region;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.LinkedHashMap;
+import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -48,21 +39,22 @@ import static net.runelite.rsb.methods.MethodProvider.methods;
 
 @Slf4j
 @Singleton
-public class RegionManager
-{
+public class RegionManager {
     @Getter
     public static GlobalCollisionMap globalCollisionMap;
 
     @Getter
     public static RegionManager singleton;
+    private final MethodContext ctx;
 
-    static {
+    public RegionManager(MethodContext ctx) {
+        this.ctx = ctx;
         try {
             globalCollisionMap = GlobalCollisionMap.fetchFromUrl("/regions");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        init();
+        init(ctx);
     }
 
     private static final Set<Integer> REFRESH_WIDGET_IDS = Set.of(WidgetInfo.QUEST_COMPLETED_NAME_TEXT.getGroupId(), WidgetInfo.LEVEL_UP_LEVEL.getGroupId());
@@ -157,20 +149,17 @@ public class RegionManager
         return ConfigManager.housePortals;
     }
 
-    public static void init()
-    {
-        singleton = methods.runeLite.getInjector().getInstance(RegionManager.class);
-        singleton.executorService.submit(TransportLoader::init);
-        methods.runeLite.eventBus.register(singleton);
-        TeleportLoader.refreshTeleports();
-        TransportLoader.refreshTransports();
+    public void init(MethodContext ctx) {
+        singleton = this;
+        singleton.executorService.submit(new TransportLoader(ctx).init());
+        ctx.runeLite.eventBus.register(singleton);
+        TeleportLoader.refreshTeleports(ctx);
+        TransportLoader.refreshTransports(ctx);
     }
 
     @Subscribe(priority = Integer.MAX_VALUE)
-    public void onGameStateChanged(GameStateChanged event)
-    {
-        switch (event.getGameState())
-        {
+    public void onGameStateChanged(MethodContext ctx, GameStateChanged event) {
+        switch (event.getGameState()) {
             case UNKNOWN:
             case STARTING:
             case LOGIN_SCREEN:
@@ -184,8 +173,8 @@ public class RegionManager
                     INITIAL_LOGIN = false;
                     executorService.schedule(() -> {
                         REFRESH_PATH = true;
-                        TeleportLoader.refreshTeleports();
-                        TransportLoader.refreshTransports();
+                        TeleportLoader.refreshTeleports(ctx);
+                        TransportLoader.refreshTransports(ctx);
                     }, 1000, TimeUnit.MILLISECONDS);
                 }
         }
@@ -250,33 +239,29 @@ public class RegionManager
 
      */
 
-    public boolean hasChanged()
-    {
-        boolean tranChanged = transportsChanged();
-        boolean teleChanged = teleportsChanged();
+    public boolean hasChanged(MethodContext ctx) {
+        boolean tranChanged = transportsChanged(ctx);
+        boolean teleChanged = teleportsChanged(ctx);
 
         boolean changed = tranChanged || teleChanged;
 
-        if (changed)
-        {
+        if (changed) {
             log.debug("Transports/teleports changed!");
         }
 
         return changed;
     }
 
-    private boolean transportsChanged()
-    {
-        List<WorldPoint> path = Walker.remainingPath(Walker.buildPath());
+    private boolean transportsChanged(MethodContext ctx) {
+        List<WorldPoint> path = Walker.remainingPath(ctx, Walker.buildPath(ctx));
 
-        if (path.isEmpty())
-        {
-            TransportLoader.refreshTransports();
+        if (path.isEmpty()) {
+            TransportLoader.refreshTransports(ctx);
             return false;
         }
 
         Map<WorldPoint, List<Transport>> previousTransports = Walker.buildTransportLinksOnPath(path);
-        TransportLoader.refreshTransports();
+        TransportLoader.refreshTransports(ctx);
         Map<WorldPoint, List<Transport>> currentTransports = Walker.buildTransportLinksOnPath(path);
 
         for (WorldPoint point : path)
@@ -292,26 +277,22 @@ public class RegionManager
         return false;
     }
 
-    private boolean teleportsChanged()
-    {
-        List<WorldPoint> path = Walker.remainingPath(Walker.buildPath());
+    private boolean teleportsChanged(MethodContext ctx) {
+        List<WorldPoint> path = Walker.remainingPath(ctx, Walker.buildPath(ctx));
 
-        if (path.isEmpty())
-        {
-            TeleportLoader.refreshTeleports();
+        if (path.isEmpty()) {
+            TeleportLoader.refreshTeleports(ctx);
             return false;
         }
 
-        LinkedHashMap<WorldPoint, Teleport> previousTeleports = Walker.buildTeleportLinksOnPath(path);
-        TeleportLoader.refreshTeleports();
-        LinkedHashMap<WorldPoint, Teleport> currentTeleports = Walker.buildTeleportLinksOnPath(path);
+        LinkedHashMap<WorldPoint, Teleport> previousTeleports = Walker.buildTeleportLinksOnPath(ctx, path);
+        TeleportLoader.refreshTeleports(ctx);
+        LinkedHashMap<WorldPoint, Teleport> currentTeleports = Walker.buildTeleportLinksOnPath(ctx, path);
 
-        for (WorldPoint point : path)
-        {
+        for (WorldPoint point : path) {
             Teleport prevTele = previousTeleports.getOrDefault(point, null);
             Teleport currTele = currentTeleports.getOrDefault(point, null);
-            if ((prevTele == null && currTele != null) || (prevTele != null && currTele == null))
-            {
+            if ((prevTele == null && currTele != null) || (prevTele != null && currTele == null)) {
                 return true;
             }
         }
